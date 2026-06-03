@@ -1,4 +1,4 @@
-PROYECTO: Protocolo RDT-UDP para Entrenamiento Distribuido de Redes Neuronales
+PROYECTO:  Protocolo RDT-UDP para Entrenamiento Distribuido de Redes Neuronales
 
 --------------------------------------------------------------------
 
