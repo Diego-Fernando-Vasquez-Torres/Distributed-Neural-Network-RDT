@@ -1,217 +1,212 @@
-# Distributed Neural Network RDT (UDP | C++ | Pybind11)
+# Distributed Neural Network RDT - UDP (C++ y Pybind11)
 
-**Universidad Católica San Pablo**  
-**Curso:** Redes y Comunicaciones  
-**Docente:** Dr. Julio Santisteban Pablo  
+**Universidad Católica San Pablo**
+**Curso:** Redes y Comunicaciones
+**Docente:** Dr. Julio Santisteban Pablo
 
-### Integrantes:
-- Jorge Chávez
-- José Cornejo
-- Marela Mendoza
-- Diego Vásquez
+**Integrantes:**
+
+* Jorge Chávez
+* José Cornejo
+* Marela Mendoza
+* Diego Vásquez
 
 ---
 
 ## 1. Descripción del Proyecto
 
-Este proyecto implementa el entrenamiento distribuido de una red neuronal artificial mediante una arquitectura tipo *Parameter Server*.
+Este proyecto implementa un sistema coordinado de entrenamiento distribuido para una red neuronal artificial (*Data Parallelism*), utilizando sockets UDP como capa de transporte.
 
-El sistema utiliza UDP como protocolo base de comunicación. Sobre este se construye una capa de transporte confiable denominada **RDT-UDP (Reliable Data Transfer over UDP)**, desarrollada en C++.
+Para garantizar la fiabilidad sobre un canal inherentemente no confiable, se ha desarrollado una capa de transporte personalizada denominada **RDT-UDP**, implementada en C++ e inspirada en el protocolo clásico **RDT 3.0 (Stop-and-Wait)** descrito por *Kurose & Ross*.
 
-El objetivo del sistema es implementar un protocolo de transporte funcional que permita:
+El sistema permite:
 
-- Entrega confiable de datos sobre UDP
-- Control de integridad mediante checksum
-- Control de orden mediante números de secuencia
-- Confirmación de recepción (ACK/NACK)
-- Retransmisión ante pérdidas o errores
+* Fragmentación segura de datasets reales
+* Distribución confiable a nodos de cómputo
+* Recolección de métricas de entrenamiento distribuidas
+* Consolidación de resultados estadísticos globales
+
+Todo ello sin pérdida de datos ni desalineación de paquetes en la red.
 
 ---
 
-## 2. Arquitectura del Sistema
+## 2. Arquitectura del Clúster
 
-El sistema está compuesto por:
+El sistema opera bajo una arquitectura síncrona descentralizada compuesta por:
 
-- **1 Nodo Maestro:** coordina el entrenamiento, distribuye datos y agrega gradientes.
-- **3 Nodos Esclavos:** realizan entrenamiento local en paralelo.
-  
+### Nodo Maestro (`maestro.py`)
+
+* Actúa como orquestador del sistema.
+* Segmenta el dataset `Diabetes.csv` de manera equitativa.
+* Transmite fragmentos mediante el motor RDT-UDP en C++.
+* Recopila métricas de los nodos esclavos.
+* Genera visualizaciones globales.
+* No realiza cómputo local para evitar saturación de red.
+
+### Nodos Esclavos (`esclavo.py`)
+
+* Ejecutan el entrenamiento local del modelo.
+* Escuchan en puertos independientes.
+* Reciben datos de forma confiable.
+* Entrenan una red neuronal en PyTorch.
+* Envían métricas de rendimiento al nodo maestro.
+
+---
+
+### Topología del Sistema
+
 ```text
                   ┌─────────────────────┐
                   │    Nodo Maestro     │
-                  │     maestro.py      │
+                  │     (Puerto 8000)   │
                   └──────────┬──────────┘
                              │
-       ┌─────────────────────┼─────────────────────┐
-       │                     │                     │
-       ▼                     ▼                     ▼
- ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
- │  Esclavo 1  │      │  Esclavo 2  │      │  Esclavo 3  │
- │ esclavo.py  │      │ esclavo.py  │      │ esclavo.py  │
- └─────────────┘      └─────────────┘      └─────────────┘
+        ┌────────────────────┼────────────────────┐
+        │                    │                    │
+        ▼                    ▼                    ▼
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Esclavo 1  │     │  Esclavo 2  │     │  Esclavo 3  │
+│ (Puerto 8001)│    │ (Puerto 8002)│    │ (Puerto 8003)│
+└─────────────┘     └─────────────┘     └─────────────┘
 ```
----
-
-## 3. Capas del Sistema
-
-### Capa de Aplicación (Python)
-
-Implementada con PyTorch. Responsable de:
-
-* Entrenamiento del modelo neuronal
-* Forward y Backward Pass
-* Cálculo de métricas
-* Visualización de resultados
 
 ---
 
-### Capa de Comunicación (C++)
+## 3. Modelo Matemático y Dataset
 
-Implementada con sockets UDP en C++.
+El sistema utiliza el dataset `Diabetes.csv`, compuesto por aproximadamente 1000 muestras.
 
-Responsable de:
+### Variables de entrada
 
-* Implementación del protocolo RDT-UDP
-* Fragmentación y reensamblaje de mensajes
-* Control de errores e integridad
-* Manejo de retransmisiones
-* Agregación de gradientes
+* **input_dim = 11**
+* Corresponde a las primeras 11 columnas del dataset (MF a B0I)
 
----
+### Variables de salida
 
-### Interfaz Python–C++ (Pybind11)
-
-Permite conectar PyTorch con el módulo en C++ de forma directa, evitando sobrecarga de comunicación adicional.
+* **num_classes = 3**
+* Codificación *One-Hot*: (P, N, Y)
 
 ---
 
-## 4. Estructura del Proyecto
+### Arquitectura de la Red Neuronal
+
+* Capa oculta 1: `Linear(128)` + ReLU
+* Capa oculta 2: `Linear(64)` + ReLU
+* Salida:
+
+  * Logits de clasificación
+  * Varianza logarítmica (incertidumbre del modelo)
+
+---
+
+## 4. Estructura del Repositorio
 
 ```text
 Distributed-Neural-Network-RDT/
 ├── dataset/
 │   └── Diabetes.csv
-│
 ├── maestro/
 │   ├── maestro.py
 │   ├── rdt_master.cpp
 │   ├── rdt_master.hpp
 │   ├── bindings.cpp
 │   └── setup.py
-│
 ├── esclavo/
 │   ├── esclavo.py
 │   ├── rdt_slave.cpp
 │   ├── rdt_slave.hpp
 │   ├── bindings.cpp
 │   └── setup.py
-│
 └── Protocolo.txt
 ```
 
 ---
 
-## 5. Formato del Datagrama (500 bytes)
+## 5. Instrucciones de Compilación e Instalación
 
-Cada paquete tiene tamaño fijo obligatorio de **500 bytes exactos**.
+### Requisitos
 
-```
-+-------------------------------------------------------+
-| Bytes 0-1    → FLAGS (2 bytes)                        |
-| Bytes 2-5    → SEQ (4 bytes)                         |
-| Bytes 6-9    → ACK/NACK (4 bytes)                    |
-| Bytes 10-498 → PAYLOAD (489 bytes)                   |
-| Byte 499     → CHECKSUM (1 byte)                     |
-+-------------------------------------------------------+
-```
+* Compilador C++ (GCC o Clang)
+* Python 3.x
+* `pybind11`
+* `setuptools`
 
 ---
 
-## 6. Tipos de Datos en el PAYLOAD
-
-El campo PAYLOAD transporta tres tipos de información:
-
-* **DATASET:** particiones del dataset de entrenamiento
-* **WEIGHTS:** parámetros del modelo neuronal
-* **GRADIENT:** gradientes calculados en los nodos esclavos
-
-Todos los datos se serializan en texto plano y se rellenan con `#` si es necesario.
-
----
-
-## 7. Mecanismos del Protocolo
-
-El sistema implementa los siguientes mecanismos:
-
-* **Checksum:** detección de corrupción de datos
-* **SEQ:** control de orden y reensamblaje
-* **ACK:** confirmación de recepción correcta
-* **NACK:** solicitud de retransmisión inmediata
-* **Timeout con select():** detección de pérdida de paquetes
-* **Algoritmo de Karn:** estimación correcta del RTT
-* **Backoff exponencial:** control de congestión en red
-
----
-
-## 8. Flujo del Sistema
-
-1. El maestro divide el dataset en 4 partes.
-2. Envía 3 partes a los esclavos.
-3. Inicializa y distribuye los pesos del modelo.
-4. Cada esclavo ejecuta entrenamiento local.
-5. Los gradientes son enviados al maestro.
-6. El maestro valida y promedia gradientes.
-7. Se actualiza el modelo global.
-
----
-
-## 9. Compilación
-
-### Maestro
+### Paso 1: Compilar el motor del Maestro
 
 ```bash
 cd maestro
-python setup.py build_ext --inplace
+python3 setup.py build_ext --inplace
 ```
 
-### Esclavos
+---
+
+### Paso 2: Compilar el motor de los Esclavos
+
+```bash
+cd ../esclavo
+python3 setup.py build_ext --inplace
+```
+
+> Esto generará librerías compartidas (`.so` o `.pyd`) para la integración directa con Python.
+
+---
+
+## 6. Guía de Ejecución
+
+Para ejecutar el sistema distribuido localmente, abrir **cuatro terminales**:
+
+---
+
+### Terminal 1 — Esclavo 1
 
 ```bash
 cd esclavo
-python setup.py build_ext --inplace
+python3 esclavo.py 1
 ```
 
----
-
-## 10. Ejecución
-
-### Iniciar esclavos primero
+### Terminal 2 — Esclavo 2
 
 ```bash
-python esclavo.py
+cd esclavo
+python3 esclavo.py 2
 ```
 
-### Luego iniciar maestro
+### Terminal 3 — Esclavo 3
 
 ```bash
-python maestro.py
+cd esclavo
+python3 esclavo.py 3
+```
+
+### Terminal 4 — Maestro (último en ejecutarse)
+
+```bash
+cd maestro
+python3 maestro.py
 ```
 
 ---
 
-## 11. Resultados
+## 7. Resultados y Visualizaciones
 
-El sistema muestra:
+Al finalizar la ejecución del protocolo confiable, el nodo maestro genera:
 
-* Accuracy
-* Precision / Recall / F1-score
-* Curva de pérdida
-* Matriz de confusión
+### Métricas de Evaluación
+
+* Classification Report (Scikit-Learn)
+* Precision, Recall y F1-score por clase
+* Evaluación para las 3 clases del sistema
+
+---
+
+### Visualizaciones
+
+* Curvas de **Loss vs Accuracy** por batch (50 muestras)
+* Matriz de confusión global del clúster
+* Gráficas generadas automáticamente con Matplotlib
 
 ---
 
-## 12. Referencias
-
-Kurose, J. F., & Ross, K. W. (2021). *Computer Networking: A Top-Down Approach* (8th ed.). Pearson.
-
----
 
